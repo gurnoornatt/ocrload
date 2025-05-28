@@ -10,6 +10,7 @@ from supabase.client import ClientOptions
 from postgrest.exceptions import APIError
 
 from app.config.settings import settings
+from app.models.database import Document, Driver, Load, DocumentFlags
 
 logger = logging.getLogger(__name__)
 
@@ -142,37 +143,43 @@ class SupabaseService:
     
     # Database Operations
     
-    async def get_driver_by_id(self, driver_id: Union[str, UUID]) -> Optional[Dict[str, Any]]:
+    async def get_driver_by_id(self, driver_id: Union[str, UUID]) -> Optional[Driver]:
         """Get driver by ID."""
         try:
             result = self.client.table("drivers").select("*").eq("id", str(driver_id)).execute()
-            return result.data[0] if result.data else None
+            if result.data:
+                return Driver(**result.data[0])
+            return None
         except APIError as e:
             logger.error(f"Failed to get driver {driver_id}: {e}")
             raise
     
-    async def get_load_by_id(self, load_id: Union[str, UUID]) -> Optional[Dict[str, Any]]:
+    async def get_load_by_id(self, load_id: Union[str, UUID]) -> Optional[Load]:
         """Get load by ID."""
         try:
             result = self.client.table("loads").select("*").eq("id", str(load_id)).execute()
-            return result.data[0] if result.data else None
+            if result.data:
+                return Load(**result.data[0])
+            return None
         except APIError as e:
             logger.error(f"Failed to get load {load_id}: {e}")
             raise
     
-    async def create_document(self, document_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def create_document(self, document: Document) -> Document:
         """
         Create a new document record.
         
         Args:
-            document_data: Dictionary with document fields
+            document: Document model instance
             
         Returns:
-            Created document record
+            Created document record as Document model
         """
         try:
+            # Convert to dict and exclude computed fields
+            document_data = document.model_dump(exclude={"created_at"})
             result = self.client.table("documents").insert(document_data).execute()
-            return result.data[0]
+            return Document(**result.data[0])
         except APIError as e:
             logger.error(f"Failed to create document: {e}")
             raise
@@ -186,38 +193,40 @@ class SupabaseService:
             logger.error(f"Failed to update document {document_id}: {e}")
             raise
     
-    async def get_document_by_id(self, document_id: Union[str, UUID]) -> Optional[Dict[str, Any]]:
+    async def get_document_by_id(self, document_id: Union[str, UUID]) -> Optional[Document]:
         """Get document by ID."""
         try:
             result = self.client.table("documents").select("*").eq("id", str(document_id)).execute()
-            return result.data[0] if result.data else None
+            if result.data:
+                return Document(**result.data[0])
+            return None
         except APIError as e:
             logger.error(f"Failed to get document {document_id}: {e}")
             raise
     
-    async def update_driver_flags(self, driver_id: Union[str, UUID], flags: Dict[str, Any]) -> bool:
+    async def update_driver_flags(self, driver_id: Union[str, UUID], **flags) -> bool:
         """
         Update driver document flags.
         
         Args:
             driver_id: Driver UUID
-            flags: Dictionary of flags to update in doc_flags JSONB column
+            **flags: Flag names and values to update (e.g. cdl_verified=True)
             
         Returns:
             True if successful
         """
         try:
-            # Get current doc_flags
+            # Get current driver
             driver = await self.get_driver_by_id(driver_id)
             if not driver:
                 raise ValueError(f"Driver {driver_id} not found")
             
-            current_flags = driver.get("doc_flags", {}) or {}
-            current_flags.update(flags)
+            # Update flags using the model method
+            driver.update_doc_flags(**flags)
             
             result = self.client.table("drivers").update({
-                "doc_flags": current_flags,
-                "updated_at": "now()"
+                "doc_flags": driver.doc_flags.model_dump(),
+                "updated_at": driver.updated_at.isoformat()
             }).eq("id", str(driver_id)).execute()
             
             return len(result.data) > 0

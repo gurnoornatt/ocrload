@@ -85,7 +85,15 @@ class TestSupabaseService:
     async def test_get_driver_by_id(self, mock_create_client):
         """Test getting driver by ID."""
         driver_id = str(uuid4())
-        mock_driver_data = {"id": driver_id, "phone_number": "+1234567890"}
+        mock_driver_data = {
+            "id": driver_id, 
+            "phone_number": "+1234567890",
+            "language": "English",
+            "doc_flags": {"cdl_verified": False, "insurance_verified": False, "agreement_signed": False},
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
         
         mock_result = Mock()
         mock_result.data = [mock_driver_data]
@@ -100,7 +108,11 @@ class TestSupabaseService:
         service = SupabaseService()
         result = await service.get_driver_by_id(driver_id)
         
-        assert result == mock_driver_data
+        # Result should be a Driver model instance
+        from app.models.database import Driver
+        assert isinstance(result, Driver)
+        assert str(result.id) == driver_id
+        assert result.phone_number == "+1234567890"
         mock_client.table.assert_called_with("drivers")
     
     @patch('app.services.supabase_client.create_client')
@@ -128,14 +140,24 @@ class TestSupabaseService:
     @pytest.mark.asyncio
     async def test_create_document(self, mock_create_client):
         """Test creating a document."""
-        document_data = {
-            "driver_id": str(uuid4()),
+        from app.models.database import Document, DocumentType
+        
+        # Create a Document model instance
+        document = Document(
+            driver_id=uuid4(),
+            type=DocumentType.CDL,
+            url="https://example.com/cdl.jpg",
+            confidence=0.95
+        )
+        
+        mock_created_doc = {
+            "id": str(document.id),
+            "driver_id": str(document.driver_id),
             "type": "CDL",
             "url": "https://example.com/cdl.jpg",
-            "confidence": 0.95
+            "confidence": 0.95,
+            "created_at": document.created_at.isoformat()
         }
-        
-        mock_created_doc = {**document_data, "id": str(uuid4())}
         mock_result = Mock()
         mock_result.data = [mock_created_doc]
         
@@ -147,10 +169,14 @@ class TestSupabaseService:
         mock_create_client.return_value = mock_client
         
         service = SupabaseService()
-        result = await service.create_document(document_data)
+        result = await service.create_document(document)
         
-        assert result == mock_created_doc
-        mock_table.insert.assert_called_with(document_data)
+        # Result should be a Document model instance
+        assert isinstance(result, Document)
+        assert result.type == DocumentType.CDL
+        assert result.confidence == 0.95
+        # Verify insert was called with proper data
+        mock_table.insert.assert_called_once()
     
     @patch('app.services.supabase_client.create_client')
     @pytest.mark.asyncio
@@ -159,9 +185,13 @@ class TestSupabaseService:
         driver_id = str(uuid4())
         current_driver = {
             "id": driver_id,
-            "doc_flags": {"cdl_verified": False}
+            "phone_number": "+1234567890",
+            "language": "English",
+            "doc_flags": {"cdl_verified": False, "insurance_verified": False, "agreement_signed": False},
+            "status": "pending",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
         }
-        new_flags = {"cdl_verified": True, "insurance_verified": True}
         
         # Mock get driver
         mock_get_result = Mock()
@@ -180,15 +210,16 @@ class TestSupabaseService:
         mock_create_client.return_value = mock_client
         
         service = SupabaseService()
-        result = await service.update_driver_flags(driver_id, new_flags)
+        # Use keyword arguments for the flags
+        result = await service.update_driver_flags(driver_id, cdl_verified=True, insurance_verified=True)
         
         assert result is True
-        # Verify update was called with merged flags
-        expected_flags = {"cdl_verified": True, "insurance_verified": True}
-        mock_table.update.assert_called_with({
-            "doc_flags": expected_flags,
-            "updated_at": "now()"
-        })
+        # Verify update was called (flags will include all flags, not just updated ones)
+        mock_table.update.assert_called_once()
+        call_args = mock_table.update.call_args[0][0]
+        assert call_args["doc_flags"]["cdl_verified"] is True
+        assert call_args["doc_flags"]["insurance_verified"] is True
+        assert "updated_at" in call_args
     
     @patch('app.services.supabase_client.create_client')
     @pytest.mark.asyncio

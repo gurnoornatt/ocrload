@@ -97,7 +97,7 @@ async def health_check() -> JSONResponse:
         "status": "ok",
         "supabase_url_configured": bool(settings.supabase_url),
         "supabase_service_key_configured": bool(settings.supabase_service_key),
-        "datalab_api_key_configured": bool(settings.datalab_api_key),
+        "datalab_api_key_configured": bool(settings.DATALAB_API_KEY),
     }
     
     # Calculate response time
@@ -141,7 +141,7 @@ async def readiness_check() -> JSONResponse:
     config_ready = all([
         settings.supabase_url,
         settings.supabase_service_key,
-        settings.datalab_api_key,
+        settings.DATALAB_API_KEY,
     ])
     
     readiness_status["checks"]["configuration"] = {

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     supabase_service_key: Optional[str] = Field(default=None, description="Supabase service key for admin operations")
 
     # OCR API configuration
-    datalab_api_key: str = Field(..., description="Datalab.to API key")
+    DATALAB_API_KEY: str = Field(..., description="Datalab.to API key")
     marker_api_key: str = Field(..., description="Marker API key")
 
     # Storage configuration
