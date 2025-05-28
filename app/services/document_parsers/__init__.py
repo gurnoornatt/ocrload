@@ -10,7 +10,9 @@ This module contains specialized parsers for different document types:
 """
 
 from .cdl_parser import CDLParser
+from .coi_parser import COIParser
 
 __all__ = [
     "CDLParser",
+    "COIParser",
 ] 
