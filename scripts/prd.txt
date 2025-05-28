@@ -1,0 +1,173 @@
+# OCR & Docs Micro-Service PRD
+Ready for Taskmaster-AI to autogenerate code, tests, Docker image, and CI pipeline.
+Assumption: unified Supabase instance (Postgres + Storage) is live and reachable via SUPABASE_URL + SUPABASE_SERVICE_KEY env vars.
+
+## TL;DR Build Checklist
+- Scaffold FastAPI 0.104 app → Dockerise
+- Implement /health, /api/media, /api/parse-test
+- Pull media file, push to raw_docs/ bucket, write documents row
+- Call Datalab.to OCR (fallback Marker) → parse by doc_type
+- Update flags in drivers and loads; emit invoice_ready event
+- Return JSON {success:true, needs_retry:false}
+- Unit-test five parsers + full happy-path integration test (uses Supabase test schema)
+- GitHub Actions: lint (ruff/black), tests, build, push Docker, deploy to Railway
+
+## Objectives & KPIs (Service-Level)
+| Metric | Pass ≤ | Measured By |
+|--------|---------|-------------|
+| OCR turnaround | 3 s median | internal timer from download start→flags updated |
+| Parse success | ≥ 95 % | documents.confidence >= 0.9 / no needs_retry |
+| Error rate 5xx | < 1 % | CloudWatch / Railway metrics |
+
+## Endpoints
+| METHOD | PATH | PURPOSE |
+|---------|------|---------|
+| GET | /health | Liveness probe (returns {ok:true}) |
+| POST | /api/media | Main webhook from WhatsApp bot. Body: { driver_id:str, load_id:str|null, doc_type:'CDL'|'COI'|'AGREEMENT'|'RATE_CON'|'POD', media_url:str } |
+| POST | /api/parse-test | Local dev: {path:str, doc_type:str} → same parse flow |
+
+### Response schema (both routes)
+```json
+{
+  "success": true,
+  "doc_id": "uuid",
+  "needs_retry": false,
+  "confidence": 0.94,
+  "flags": {
+    "cdl_verified": true,
+    "insurance_verified": true,
+    "agreement_signed": true,
+    "ratecon_parsed": true,
+    "pod_ok": true
+  }
+}
+```
+
+## Environment Variables
+| Key | Example |
+|-----|---------|
+| SUPABASE_URL | https://xyz.supabase.co |
+| SUPABASE_SERVICE_KEY | sbp_xxxxxxxxx |
+| DATLAB_API_KEY | dl_live_abc123 |
+| MARKER_API_KEY | mrk_live_xyz456 |
+| AWS_REGION | us-east-1 (for S3-compatible Supabase Storage) |
+| S3_BUCKET | raw_docs |
+| OPENAI_API_KEY | optional (only if using GPT fallback) |
+
+## Database Contract
+(tables already exist; columns immutable)
+
+### documents table
+| column | type | write-rule |
+|--------|------|------------|
+| id | uuid PK | auto |
+| driver_id | uuid FK | required |
+| load_id | uuid FK null | required for POD & RATE_CON |
+| kind | ENUM | copy doc_type |
+| raw_url | text | S3 path |
+| parsed_json | jsonb | full OCR payload |
+| confidence | numeric(4,2) | min 0, max 1 |
+| status | ENUM('pending','parsed','needs_review') | logic: confidence<0.9 ⇒ needs_review |
+
+### Flag updates
+| doc_type | table.column | rule |
+|----------|--------------|------|
+| CDL | drivers.cdl_verified | confidence≥0.9 && expiry>today+30 |
+| COI | drivers.insurance_verified | confidence≥0.9 && expiry>today |
+| AGREEMENT | drivers.agreement_signed | always true |
+| RATE_CON | loads.ratecon_verified | parsed rate + origin/dest present |
+| POD | loads.status | set 'delivered'; if ratecon_verified=true → emit invoice_ready event |
+
+## OCR Parse Rules
+```python
+def parse_cdl(text):
+    name = regex_name(text)
+    exp  = regex_date(text)
+    confidence = .95 if name and exp else .70
+    return {...}
+
+# same pattern for COI, POD, RATE_CON, AGREEMENT
+```
+For RATE_CON use pdfplumber if PDF; else image OCR.
+
+## Event Bus Stub
+Emit to Redis channel events (Upstash) JSON:
+```json
+{
+ "event":"invoice_ready",
+ "load_id":"uuid",
+ "driver_id":"uuid",
+ "timestamp":"2025-05-27T20:15:00Z"
+}
+```
+(Include Upstash client but allow no-op if REDIS_URL missing.)
+
+## Testing Spec
+| Test | Given | Expect |
+|------|-------|--------|
+| test_cdl_ok | clear JPG sample | cdl_verified=True |
+| test_coi_expired | COI expired 2023 | insurance_verified=False + needs_retry=True |
+| test_pod_flow | POD image + ratecon_verified true | emits invoice_ready |
+| test_ratecon_parse | PDF with $2,500 ATL→CHI | parsed rate 250000 cents |
+
+Use pytest + pytest-asyncio; mock Datalab API with respx.
+
+## Dockerfile (multi-stage)
+```dockerfile
+FROM python:3.12-slim AS base
+WORKDIR /app
+COPY pyproject.toml poetry.lock .
+RUN pip install poetry && poetry install --no-root
+COPY . .
+CMD ["uvicorn","main:app","--host","0.0.0.0","--port","8000"]
+```
+
+## GitHub Actions (ci.yml)
+```yaml
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install poetry
+      - run: poetry install --no-root
+      - run: pytest
+  build_deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ghcr.io/org/ocr-service:${{ github.sha }} .
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: ${{ github.actor }}, password: ${{ secrets.GITHUB_TOKEN }} }
+      - run: docker push ghcr.io/org/ocr-service:${{ github.sha }}
+      - run: curl -XPOST $RAILWAY_DEPLOY_HOOK   # trigger Railway
+```
+
+## Acceptance Criteria
+- All tests green in CI
+- /health returns {ok:true} on Railway preview URL
+- Upload sample CDL via /api/parse-test returns cdl_verified=true
+- Simulated POD + RateCon triggers invoice_ready message in Redis log
+- Supabase rows for documents and flags updated exactly as contract
+
+## Out-of-Scope (defer)
+- Real S3 creds → use Supabase Storage for MVP
+- ML-based field extraction — regex good enough
+- Admin GUI — handled later in Retool
+
+## Technical Stack
+- FastAPI 0.104
+- Python 3.12
+- Poetry for dependency management
+- Supabase (Postgres + Storage)
+- Datalab.to OCR API (primary)
+- Marker API (fallback)
+- Upstash Redis for events
+- Docker for containerization
+- GitHub Actions for CI/CD
+- Railway for deployment
+- pytest for testing
+- ruff/black for linting 
