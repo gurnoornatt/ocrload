@@ -98,7 +98,7 @@ def create_application() -> FastAPI:
     if not settings.debug:
         app.add_middleware(
             TrustedHostMiddleware, 
-            allowed_hosts=["*.railway.app", "localhost"]
+            allowed_hosts=["*.railway.app", "localhost", "testserver"]
         )
 
     # Add timing middleware
@@ -146,12 +146,12 @@ def create_application() -> FastAPI:
         )
 
     # Include routers
-    from app.routers import health
+    from app.routers import health, media
     app.include_router(health.router)
+    app.include_router(media.router, prefix="/api")
     
     # TODO: Add remaining routers when they're created
-    # from app.routers import media, parse_test
-    # app.include_router(media.router, prefix="/api")
+    # from app.routers import parse_test
     # app.include_router(parse_test.router, prefix="/api")
 
     return app
