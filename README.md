@@ -63,8 +63,7 @@ SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_KEY=your_service_key
 
 # OCR API Configuration
-DATALAB_API_KEY=your_datalab_key
-MARKER_API_KEY=your_marker_key
+DATALAB_API_KEY=your_datalab_key  # Used for both Datalab and Marker APIs
 
 # Storage Configuration
 AWS_REGION=us-east-1

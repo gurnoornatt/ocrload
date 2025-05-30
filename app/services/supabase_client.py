@@ -29,14 +29,9 @@ class SupabaseService:
         self._initialized = False
         
         # Client options for timeout and connection management
-        # Use service key if available, otherwise fall back to anon key
-        auth_key = settings.supabase_service_key or settings.supabase_anon_key
+        # Don't manually set auth headers - let Supabase client handle authentication
         self._client_options = ClientOptions(
             schema="public",
-            headers={
-                "apikey": auth_key,
-                "Authorization": f"Bearer {auth_key}"
-            },
             auto_refresh_token=True,
             persist_session=True,
         )
@@ -54,14 +49,13 @@ class SupabaseService:
     def _initialize_client(self) -> None:
         """Initialize the Supabase client."""
         try:
-            auth_key = settings.supabase_service_key or settings.supabase_anon_key
             self._client = create_client(
                 supabase_url=settings.supabase_url,
-                supabase_key=auth_key,
+                supabase_key=settings.supabase_service_key or settings.supabase_anon_key,
                 options=self._client_options
             )
             self._initialized = True
-            logger.info("Supabase client initialized successfully")
+            logger.info(f"Supabase client initialized successfully with {'service' if settings.supabase_service_key else 'anon'} key")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {e}")
             raise

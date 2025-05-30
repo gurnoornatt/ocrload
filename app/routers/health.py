@@ -85,12 +85,41 @@ async def health_check() -> JSONResponse:
                 "status": "error", 
                 "message": supabase_health["storage"]["message"]
             }
+        
+        # Add Redis check results
+        from app.services.redis_event_service import redis_event_service
+        redis_health = await redis_event_service.health_check()
+        
+        redis_status = redis_health["status"]
+        if redis_status == "healthy":
+            health_status["checks"]["redis"] = {
+                "status": "ok", 
+                "message": redis_health["message"],
+                "configured": redis_health["configured"]
+            }
+        elif redis_status == "disabled":
+            health_status["checks"]["redis"] = {
+                "status": "info", 
+                "message": redis_health["message"],
+                "configured": redis_health["configured"]
+            }
+            # Redis being disabled is not a health issue
+        else:
+            # Redis failure is not critical - service can continue without events
+            health_status["checks"]["redis"] = {
+                "status": "warning", 
+                "message": redis_health["message"],
+                "configured": redis_health["configured"]
+            }
+            if health_status["status"] == "healthy":
+                health_status["status"] = "degraded"
             
     except Exception as e:
         health_status["ok"] = False
         health_status["status"] = "unhealthy"
         health_status["checks"]["database"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
         health_status["checks"]["storage"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
+        health_status["checks"]["redis"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
     
     # Basic environment checks
     health_status["checks"]["environment"] = {

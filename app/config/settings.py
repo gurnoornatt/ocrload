@@ -27,8 +27,7 @@ class Settings(BaseSettings):
     supabase_service_key: Optional[str] = Field(default=None, description="Supabase service key for admin operations")
 
     # OCR API configuration
-    DATALAB_API_KEY: str = Field(..., description="Datalab.to API key")
-    marker_api_key: str = Field(..., description="Marker API key")
+    DATALAB_API_KEY: str = Field(..., description="Datalab.to API key (also used for Marker feature)")
 
     # Storage configuration
     aws_region: str = Field(default="us-east-1", description="AWS region for S3 operations")
@@ -36,6 +35,7 @@ class Settings(BaseSettings):
 
     # Redis configuration
     redis_url: Optional[str] = Field(default=None, description="Redis URL for event system")
+    redis_token: Optional[str] = Field(default=None, description="Redis REST token for Upstash authentication")
 
     # Optional APIs
     openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key for fallback processing")

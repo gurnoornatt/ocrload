@@ -79,7 +79,7 @@ class TestCOIParser:
         
         for input_name, expected in test_cases:
             result = self.parser._clean_company_name(input_name)
-            assert result == expected, f"Failed for '{input_name}': expected '{expected}', got '{result}'"
+                assert result == expected, f"Failed for '{input_name}': expected '{expected}', got '{result}'"
     
     def test_currency_amount_parsing(self):
         """Test currency amount parsing with various formats."""
