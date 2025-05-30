@@ -21,7 +21,6 @@ from app.services.supabase_client import supabase_service
 logger = logging.getLogger(__name__)
 
 # File validation constants
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.pdf'}
 ALLOWED_MIME_TYPES = {
     'image/jpeg', 'image/jpg', 'image/png', 'application/pdf'
@@ -79,7 +78,7 @@ class DocumentStorageService:
     
     def _validate_file_size(self, size: int) -> bool:
         """Validate file size."""
-        return 0 < size <= MAX_FILE_SIZE
+        return 0 < size <= settings.max_file_size
     
     def _generate_storage_path(self, driver_id: UUID, doc_type: str, original_filename: str) -> str:
         """
@@ -154,17 +153,17 @@ class DocumentStorageService:
                 content = b''
                 async for chunk in response.content.iter_chunked(8192):
                     content += chunk
-                    if len(content) > MAX_FILE_SIZE:
+                    if len(content) > settings.max_file_size:
                         raise FileValidationError(
                             f"File too large: {len(content)} bytes. "
-                            f"Maximum allowed: {MAX_FILE_SIZE} bytes"
+                            f"Maximum allowed: {settings.max_file_size} bytes"
                         )
                 
                 # Final size check
                 if not self._validate_file_size(len(content)):
                     raise FileValidationError(
                         f"Invalid file size: {len(content)} bytes. "
-                        f"Must be between 1 and {MAX_FILE_SIZE} bytes"
+                        f"Must be between 1 and {settings.max_file_size} bytes"
                     )
                 
                 # Validate filename extension
@@ -221,7 +220,7 @@ class DocumentStorageService:
             if not self._validate_file_size(file_size):
                 raise FileValidationError(
                     f"Invalid file size: {file_size} bytes. "
-                    f"Must be between 1 and {MAX_FILE_SIZE} bytes"
+                    f"Must be between 1 and {settings.max_file_size} bytes"
                 )
             
             # Validate file extension

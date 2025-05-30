@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # Performance settings
     ocr_timeout: int = Field(default=30, description="OCR processing timeout in seconds")
-    max_file_size: int = Field(default=10485760, description="Maximum file size in bytes (10MB)")
+    max_file_size: int = Field(default=52428800, description="Maximum file size in bytes (50MB)")
     max_workers: int = Field(default=4, description="Maximum number of worker threads")
 
     # Health check settings

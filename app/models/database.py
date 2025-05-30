@@ -220,9 +220,12 @@ class Document(BaseDBModel):
     load_id: Optional[UUID] = None
     type: DocumentType  # Maps to existing 'type' column
     url: str  # Maps to existing 'url' column (not raw_url as in PRD)
+    status: DocumentStatus = Field(default=DocumentStatus.PENDING)  # Document processing status
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
     parsed_data: Optional[Dict[str, Any]] = None  # JSONB column
     verified: Optional[bool] = None  # Existing boolean column
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata (file info, errors, etc.)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     @field_validator('confidence', mode='before')
     @classmethod  

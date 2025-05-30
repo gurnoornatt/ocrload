@@ -178,6 +178,27 @@ class SupabaseService:
             logger.error(f"Failed to create document: {e}")
             raise
     
+    async def create_document_raw(self, document_data: Dict[str, Any]) -> Document:
+        """
+        Create a new document record from raw dictionary data.
+        
+        Args:
+            document_data: Dictionary with document data (UUIDs as strings)
+            
+        Returns:
+            Created document record as Document model
+        """
+        try:
+            # Exclude computed fields that should be set by database
+            if 'created_at' in document_data:
+                del document_data['created_at']
+            
+            result = self.client.table("documents").insert(document_data).execute()
+            return Document(**result.data[0])
+        except APIError as e:
+            logger.error(f"Failed to create document: {e}")
+            raise
+    
     async def update_document(self, document_id: Union[str, UUID], update_data: Dict[str, Any]) -> Dict[str, Any]:
         """Update document by ID."""
         try:
@@ -271,14 +292,16 @@ class SupabaseService:
             Public URL of the uploaded file
         """
         try:
+            # Prepare file options - only include content-type if provided
+            file_options = {}
+            if content_type:
+                file_options["content-type"] = content_type
+            
             # Upload file to storage bucket
             result = self.client.storage.from_(self.storage_bucket).upload(
                 path=file_path,
                 file=file_content,
-                file_options={
-                    "content-type": content_type,
-                    "upsert": False  # Don't overwrite existing files
-                }
+                file_options=file_options if file_options else None
             )
             
             if result:

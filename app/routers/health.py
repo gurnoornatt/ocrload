@@ -4,16 +4,17 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
+from app.models.responses import HealthCheckResponse
 
 router = APIRouter(tags=["health"])
 
 
-@router.get("/health", response_model=Dict[str, Any])
-async def health_check() -> JSONResponse:
+@router.get("/health", response_model=HealthCheckResponse)
+async def health_check(http_request: Request) -> JSONResponse:
     """
     Health check endpoint for Railway and Kubernetes liveness probes.
     
@@ -25,17 +26,18 @@ async def health_check() -> JSONResponse:
     
     Should respond in <100ms for optimal probe performance.
     """
+    request_id = getattr(http_request.state, 'request_id', None)
     start_time = time.time()
     
-    health_status = {
-        "ok": True,
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": settings.app_name,
-        "version": settings.app_version,
-        "environment": "development" if settings.debug else "production",
-        "checks": {}
-    }
+    health_status = HealthCheckResponse(
+        ok=True,
+        status="healthy",
+        service=settings.app_name,
+        version=settings.app_version,
+        environment="development" if settings.debug else "production",
+        checks={},
+        response_time_ms=0.0  # Will be updated below
+    )
     
     # Database and storage connectivity checks
     try:
@@ -45,20 +47,20 @@ async def health_check() -> JSONResponse:
         # Add database check results
         db_status = supabase_health["database"]["status"]
         if db_status == "healthy":
-            health_status["checks"]["database"] = {
+            health_status.checks["database"] = {
                 "status": "ok", 
                 "message": supabase_health["database"]["message"]
             }
         elif db_status == "limited":
-            health_status["checks"]["database"] = {
+            health_status.checks["database"] = {
                 "status": "warning", 
                 "message": supabase_health["database"]["message"]
             }
-            health_status["status"] = "degraded"
+            health_status.status = "degraded"
         else:
-            health_status["ok"] = False
-            health_status["status"] = "unhealthy"
-            health_status["checks"]["database"] = {
+            health_status.ok = False
+            health_status.status = "unhealthy"
+            health_status.checks["database"] = {
                 "status": "error", 
                 "message": supabase_health["database"]["message"]
             }
@@ -66,22 +68,22 @@ async def health_check() -> JSONResponse:
         # Add storage check results
         storage_status = supabase_health["storage"]["status"]
         if storage_status == "healthy":
-            health_status["checks"]["storage"] = {
+            health_status.checks["storage"] = {
                 "status": "ok", 
                 "message": supabase_health["storage"]["message"],
                 "bucket": supabase_health["storage"].get("bucket_name")
             }
         elif storage_status == "warning":
-            health_status["checks"]["storage"] = {
+            health_status.checks["storage"] = {
                 "status": "warning", 
                 "message": supabase_health["storage"]["message"]
             }
-            if health_status["status"] == "healthy":
-                health_status["status"] = "degraded"
+            if health_status.status == "healthy":
+                health_status.status = "degraded"
         else:
-            health_status["ok"] = False
-            health_status["status"] = "unhealthy"
-            health_status["checks"]["storage"] = {
+            health_status.ok = False
+            health_status.status = "unhealthy"
+            health_status.checks["storage"] = {
                 "status": "error", 
                 "message": supabase_health["storage"]["message"]
             }
@@ -92,13 +94,13 @@ async def health_check() -> JSONResponse:
         
         redis_status = redis_health["status"]
         if redis_status == "healthy":
-            health_status["checks"]["redis"] = {
+            health_status.checks["redis"] = {
                 "status": "ok", 
                 "message": redis_health["message"],
                 "configured": redis_health["configured"]
             }
         elif redis_status == "disabled":
-            health_status["checks"]["redis"] = {
+            health_status.checks["redis"] = {
                 "status": "info", 
                 "message": redis_health["message"],
                 "configured": redis_health["configured"]
@@ -106,23 +108,23 @@ async def health_check() -> JSONResponse:
             # Redis being disabled is not a health issue
         else:
             # Redis failure is not critical - service can continue without events
-            health_status["checks"]["redis"] = {
+            health_status.checks["redis"] = {
                 "status": "warning", 
                 "message": redis_health["message"],
                 "configured": redis_health["configured"]
             }
-            if health_status["status"] == "healthy":
-                health_status["status"] = "degraded"
+            if health_status.status == "healthy":
+                health_status.status = "degraded"
             
     except Exception as e:
-        health_status["ok"] = False
-        health_status["status"] = "unhealthy"
-        health_status["checks"]["database"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
-        health_status["checks"]["storage"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
-        health_status["checks"]["redis"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
+        health_status.ok = False
+        health_status.status = "unhealthy"
+        health_status.checks["database"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
+        health_status.checks["storage"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
+        health_status.checks["redis"] = {"status": "error", "message": f"Health check failed: {str(e)}"}
     
     # Basic environment checks
-    health_status["checks"]["environment"] = {
+    health_status.checks["environment"] = {
         "status": "ok",
         "supabase_url_configured": bool(settings.supabase_url),
         "supabase_service_key_configured": bool(settings.supabase_service_key),
@@ -131,25 +133,31 @@ async def health_check() -> JSONResponse:
     
     # Calculate response time
     response_time = (time.time() - start_time) * 1000  # Convert to milliseconds
-    health_status["response_time_ms"] = round(response_time, 2)
+    health_status.response_time_ms = round(response_time, 2)
     
     # Return appropriate status code
-    status_code = 200 if health_status["ok"] else 503
+    status_code = 200 if health_status.ok else 503
+    
+    # Convert to dict for JSON response with proper serialization
+    response_data = health_status.model_dump(mode='json')
+    if request_id:
+        response_data["request_id"] = request_id
     
     return JSONResponse(
         status_code=status_code,
-        content=health_status
+        content=response_data
     )
 
 
 @router.get("/health/ready", response_model=Dict[str, Any])
-async def readiness_check() -> JSONResponse:
+async def readiness_check(http_request: Request) -> JSONResponse:
     """
     Readiness check endpoint for determining if service is ready to accept traffic.
     
     This performs more thorough checks than the basic health endpoint,
     including external service connectivity.
     """
+    request_id = getattr(http_request.state, 'request_id', None)
     start_time = time.time()
     
     readiness_status = {
@@ -184,6 +192,10 @@ async def readiness_check() -> JSONResponse:
     # Calculate response time
     response_time = (time.time() - start_time) * 1000
     readiness_status["response_time_ms"] = round(response_time, 2)
+    
+    # Add request ID if available
+    if request_id:
+        readiness_status["request_id"] = request_id
     
     # Return appropriate status code
     status_code = 200 if readiness_status["ready"] else 503
