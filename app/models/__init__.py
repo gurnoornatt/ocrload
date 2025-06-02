@@ -1,38 +1,61 @@
 """Models package exports."""
 
 from .database import (
-    DocumentType,
-    DocumentStatus, 
-    Document,
-    Driver,
-    Load,
-    Transaction
+    # Core models
+    Document, DocumentStatus, DocumentType, Driver, Load, Transaction,
+    # Freight audit models  
+    AuditResult, AuditDiscrepancy, ContractRate, SpendAnalytics,
+    AuditResultStatus, DiscrepancyResolutionStatus, RateType, PeriodType,
+    # Document parsing models
+    Invoice, BillOfLading, LumperReceipt, AccessorialCharge, ApprovalStatus,
+    # Parsed data models
+    CDLData, COIData, AgreementData, RateConData, PODData
 )
 from .responses import (
     DocumentFlags,
-    StandardAPIResponse,
+    ErrorResponse,
+    HealthCheckResponse,
     MediaUploadResponse,
     ParseTestResponse,
     ProcessingStatusResponse,
-    ErrorResponse,
-    HealthCheckResponse
+    StandardAPIResponse,
 )
 
 __all__ = [
     # Database models
     "DocumentType",
     "DocumentStatus",
-    "Document", 
+    "Document",
     "Driver",
     "Load",
     "Transaction",
-    
+    # Freight audit models
+    "AuditResult",
+    "AuditDiscrepancy",
+    "ContractRate",
+    "SpendAnalytics",
+    "AuditResultStatus",
+    "DiscrepancyResolutionStatus",
+    "RateType",
+    "PeriodType",
+    # Document parsing models
+    "Invoice",
+    "BillOfLading",
+    "LumperReceipt",
+    "AccessorialCharge",
+    "ApprovalStatus",
+    # Parsed data models
+    "CDLData",
+    "COIData",
+    "AgreementData",
+    "RateConData",
+    "PODData",
     # Response models
     "DocumentFlags",
     "StandardAPIResponse",
     "MediaUploadResponse",
-    "ParseTestResponse", 
+    "ParseTestResponse",
     "ProcessingStatusResponse",
     "ErrorResponse",
-    "HealthCheckResponse"
+    "HealthCheckResponse",
 ]

@@ -1,0 +1,412 @@
+# Freight Intelligence & Audit Engine Microservice PRD
+**Service Name:** freight-intel-service  
+**Role:** Document processing, audit engine, and analytics API provider in freight intelligence platform  
+**Architecture:** FastAPI microservice with Supabase backend
+
+## Executive Summary
+Build a comprehensive freight document intelligence and audit engine that processes ALL freight document types, performs automated invoice auditing against contracts/rates, and provides rich analytics APIs for freight spend intelligence. This microservice serves as the core data processing engine for a larger freight intelligence platform, handling steps 1-4 and 7 of the formal freight auditing process.
+
+## Freight Auditing Process Integration
+
+### Formal Freight Auditing Steps
+| Step | Description | Our Microservice Role |
+|------|-------------|----------------------|
+| 1. **Data Collection** | Gather invoices, BOLs, contracts, and other shipping documents | ✅ **PRIMARY** - Universal document processing pipeline |
+| 2. **Invoice Verification** | Check invoice details against shipping docs and contracts | ✅ **PRIMARY** - Cross-reference engine |
+| 3. **Rate Validation** | Confirm rates and surcharges match contract terms | ✅ **PRIMARY** - Audit engine core logic |
+| 4. **Discrepancy Identification** | Identify and flag errors or discrepancies | ✅ **PRIMARY** - Automated discrepancy detection |
+| 5. **Dispute Resolution** | Communicate with carriers to resolve issues | 🔄 **DATA PROVIDER** - Supply audit evidence to workflow service |
+| 6. **Approval/Payment** | Approve and process accurate payments | 🔄 **DATA PROVIDER** - Supply validated amounts to payment service |
+| 7. **Record/Reporting** | Document findings and generate reports for analysis | ✅ **PRIMARY** - Analytics APIs + 🔄 **DATA PROVIDER** - Feed reporting service |
+
+### Microservice Responsibilities
+- **Steps 1-4:** Complete automation of document collection through discrepancy identification
+- **Step 7 (Data Layer):** Provide all audit data, analytics, and insights via APIs
+- **Steps 5-6 (Integration):** Supply structured data to downstream workflow and payment services
+
+## Core Value Proposition
+- **Universal Document Intelligence:** Process bills of lading, lumper receipts, freight invoices, carrier contracts, accessorials, PODs, delivery notes, and packing lists
+- **Automated Freight Audit:** Validate invoices against contracts, detect billing errors, flag unauthorized charges
+- **Freight Spend Intelligence:** Provide deep analytics on where money is going, cost optimization opportunities, carrier performance
+- **Real-Time Processing:** 3-second median turnaround for document processing and audit results
+- **API-First Design:** Clean REST APIs for integration with customer dashboards, ERP systems, and workflow tools
+
+## Document Types & Processing Requirements
+
+### Primary Documents (Revenue Critical)
+| Document Type | Extract Fields | Audit Logic | Confidence Target |
+|---------------|----------------|-------------|-------------------|
+| **Freight Invoices** | Invoice #, billing date, shipper/consignee, line items, rates, accessorials, fuel surcharge, total, remit-to | Compare vs rate confirmations, validate accessorials, check for duplicate billing | 90%+ |
+| **Bills of Lading (BOL)** | Shipper/consignee info, carrier details, freight description, weight, pieces, pro number, special instructions | Validate against rate confirmations, check weight/commodity consistency | 85%+ |
+| **Rate Confirmations** | Rate amounts, origin/destination, load details, pickup/delivery dates, contract terms | Store as audit baseline for invoice validation | 90%+ |
+| **Lumper Receipts** | Facility name, date/time, load number, fee amount, payment method, services performed | Validate against contracted lumper rates, check for duplicate charges | 80%+ |
+
+### Secondary Documents (Operational)
+| Document Type | Extract Fields | Business Logic | Confidence Target |
+|---------------|----------------|----------------|-------------------|
+| **CDL Documents** | Driver name, license #, expiration, endorsements, state | Validate driver authorization, track expiration dates | 95%+ |
+| **COI (Insurance)** | Policy numbers, coverage amounts, effective/expiration dates, carrier info | Ensure coverage compliance, track renewals | 90%+ |
+| **POD (Proof of Delivery)** | Delivery confirmation, signature, date/time, receiver name, condition notes | Trigger load completion, enable invoice processing | 85%+ |
+| **Driver Agreements** | Contract terms, signatures, effective dates | Confirm driver authorization and compliance | 80%+ |
+
+### Audit Documents (Financial Control)
+| Document Type | Extract Fields | Audit Purpose | Confidence Target |
+|---------------|----------------|---------------|-------------------|
+| **Accessorial Charges** | Service type, duration, location, rates, approvals | Validate against contracted accessorial rates | 85%+ |
+| **Delivery Notes** | Delivery details, exceptions, special handling | Cross-reference with invoice charges | 80%+ |
+| **Packing Lists** | Item descriptions, quantities, weights, SKUs | Validate freight class and weight accuracy | 80%+ |
+
+## Audit Engine Specifications
+
+### Invoice Validation Logic (Steps 2-4 Implementation)
+```python
+class InvoiceAuditEngine:
+    def audit_invoice(self, invoice_data, rate_confirmation, contract_terms):
+        """
+        Core audit logic implementing steps 2-4 of freight auditing process
+        Step 2: Invoice Verification - Check invoice against supporting docs
+        Step 3: Rate Validation - Confirm rates match contract terms  
+        Step 4: Discrepancy Identification - Flag all errors and issues
+        """
+        discrepancies = []
+        
+        # Step 2: Invoice Verification
+        if not self.verify_invoice_completeness(invoice_data):
+            discrepancies.append("Incomplete invoice data")
+            
+        if not self.cross_reference_documents(invoice_data, rate_confirmation):
+            discrepancies.append("Invoice doesn't match supporting documents")
+        
+        # Step 3: Rate Validation
+        if invoice_data.base_rate != rate_confirmation.agreed_rate:
+            discrepancies.append({
+                "type": "rate_mismatch",
+                "invoice_rate": invoice_data.base_rate,
+                "contract_rate": rate_confirmation.agreed_rate,
+                "variance": invoice_data.base_rate - rate_confirmation.agreed_rate
+            })
+        
+        # Accessorial validation
+        for charge in invoice_data.accessorials:
+            if not self.validate_accessorial(charge, contract_terms):
+                discrepancies.append({
+                    "type": "unauthorized_accessorial",
+                    "charge": charge.type,
+                    "amount": charge.amount,
+                    "reason": "Not in contract terms"
+                })
+        
+        # Fuel surcharge validation
+        if not self.validate_fuel_surcharge(invoice_data.fuel_surcharge, contract_terms):
+            discrepancies.append({
+                "type": "fuel_surcharge_error",
+                "invoice_rate": invoice_data.fuel_surcharge,
+                "contract_rate": contract_terms.fuel_surcharge_rate
+            })
+            
+        # Step 4: Discrepancy Identification & Classification
+        return AuditResult(
+            status="passed" if not discrepancies else "failed",
+            discrepancies=discrepancies,
+            original_amount=invoice_data.total_amount,
+            recommended_payment=self.calculate_correct_amount(invoice_data, rate_confirmation),
+            savings=invoice_data.total_amount - self.calculate_correct_amount(invoice_data, rate_confirmation),
+            confidence_score=self.calculate_audit_confidence(discrepancies),
+            requires_dispute=len(discrepancies) > 0
+        )
+```
+
+### Audit Categories (Step 4 Classifications)
+- **Rate Discrepancies:** Base rate doesn't match rate confirmation
+- **Unauthorized Accessorials:** Charges not pre-approved or outside contract terms
+- **Duplicate Billing:** Same load/service billed multiple times  
+- **Weight/Commodity Mismatches:** Invoice details don't match BOL
+- **Fuel Surcharge Errors:** Incorrect fuel surcharge calculation
+- **Missing Documentation:** Invoice without supporting BOL/POD
+- **Calculation Errors:** Math errors in invoice totals
+- **Contract Violations:** Charges outside agreed terms
+
+## API Specifications
+
+### Document Processing Endpoints (Step 1: Data Collection)
+```
+POST /api/documents/process
+Body: {
+  "document_url": "string",
+  "document_type": "INVOICE|BOL|RATE_CON|LUMPER|CDL|COI|POD|AGREEMENT|ACCESSORIAL|DELIVERY_NOTE|PACKING_LIST",
+  "customer_id": "uuid",
+  "load_id": "uuid", // optional
+  "driver_id": "uuid" // optional
+}
+Response: {
+  "document_id": "uuid",
+  "status": "processing|completed|failed",
+  "extracted_data": {...},
+  "confidence_score": 0.95,
+  "processing_time_ms": 2800
+}
+```
+
+### Audit Engine Endpoints (Steps 2-4: Verification through Discrepancy ID)
+```
+POST /api/audit/invoice
+Body: {
+  "invoice_document_id": "uuid",
+  "rate_confirmation_id": "uuid",
+  "contract_id": "uuid" // optional
+}
+Response: {
+  "audit_id": "uuid",
+  "status": "passed|failed|review_required",
+  "discrepancies": [
+    {
+      "type": "rate_mismatch",
+      "description": "Invoice rate $2.50/mile vs contract rate $2.25/mile",
+      "invoice_amount": 500000, // cents
+      "correct_amount": 450000, // cents
+      "savings": 50000, // cents
+      "requires_dispute": true
+    }
+  ],
+  "original_amount": 265000, // cents
+  "recommended_payment": 250000, // cents
+  "total_savings": 15000, // cents
+  "confidence": 0.92,
+  "ready_for_dispute": true, // Step 5 input
+  "ready_for_payment": false // Step 6 input
+}
+```
+
+### Analytics & Intelligence Endpoints (Step 7: Record/Reporting Data)
+```
+GET /api/analytics/spend-summary
+Query: customer_id, date_range, carrier_id, route
+Response: {
+  "total_spend": 1250000, // cents
+  "audit_savings": 45000, // cents
+  "error_rate": 0.08,
+  "top_carriers": [...],
+  "cost_trends": [...],
+  "audit_efficiency": 0.94
+}
+
+GET /api/analytics/audit-insights
+Query: customer_id, date_range
+Response: {
+  "total_invoices_audited": 1250,
+  "discrepancies_found": 98,
+  "savings_identified": 125000, // cents
+  "common_errors": [
+    {"type": "unauthorized_accessorial", "frequency": 45},
+    {"type": "rate_mismatch", "frequency": 32}
+  ],
+  "carrier_performance": [...],
+  "dispute_queue_size": 23, // For step 5 workflow service
+  "payment_ready_count": 1152 // For step 6 payment service
+}
+```
+
+### Integration Endpoints (Steps 5-6 Data Providers)
+```
+GET /api/audit/dispute-queue
+Query: customer_id, carrier_id, status
+Response: {
+  "disputes": [
+    {
+      "audit_id": "uuid",
+      "invoice_id": "uuid", 
+      "carrier_id": "uuid",
+      "discrepancy_summary": "Rate mismatch + unauthorized accessorial",
+      "total_disputed_amount": 50000, // cents
+      "evidence_documents": [...],
+      "priority": "high"
+    }
+  ]
+}
+
+GET /api/audit/payment-ready
+Query: customer_id, date_range
+Response: {
+  "approved_payments": [
+    {
+      "invoice_id": "uuid",
+      "carrier_id": "uuid", 
+      "original_amount": 265000, // cents
+      "approved_amount": 250000, // cents
+      "audit_confidence": 0.95,
+      "payment_authorization": "approved"
+    }
+  ]
+}
+```
+
+## Database Schema Extensions
+
+### New Tables for Audit Process
+```sql
+-- Audit results storage (Steps 2-4 outputs)
+CREATE TABLE audit_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  invoice_document_id UUID REFERENCES documents(id),
+  rate_confirmation_id UUID REFERENCES documents(id),
+  contract_id UUID REFERENCES contracts(id),
+  audit_step VARCHAR(50) DEFAULT 'verification', -- verification, rate_validation, discrepancy_id
+  status audit_status DEFAULT 'pending', -- pending, passed, failed, review_required
+  discrepancies JSONB DEFAULT '[]',
+  original_amount INTEGER, -- cents
+  recommended_amount INTEGER, -- cents
+  savings INTEGER, -- cents
+  confidence NUMERIC(4,2),
+  requires_dispute BOOLEAN DEFAULT false, -- Step 5 trigger
+  ready_for_payment BOOLEAN DEFAULT false, -- Step 6 trigger
+  audited_at TIMESTAMPTZ DEFAULT NOW(),
+  audited_by VARCHAR(100)
+);
+
+-- Freight spend analytics (Step 7 data aggregation)
+CREATE TABLE spend_analytics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL,
+  period_start DATE,
+  period_end DATE,
+  carrier_id UUID,
+  route VARCHAR(200),
+  total_spend INTEGER, -- cents
+  invoice_count INTEGER,
+  audit_savings INTEGER, -- cents
+  error_rate NUMERIC(4,2),
+  audit_efficiency NUMERIC(4,2), -- successful audits / total audits
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contract rates for audit baseline (Step 3 reference data)
+CREATE TABLE contract_rates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL,
+  carrier_id UUID,
+  origin VARCHAR(200),
+  destination VARCHAR(200),
+  rate_per_mile INTEGER, -- cents
+  base_rate INTEGER, -- cents
+  fuel_surcharge_pct NUMERIC(4,2),
+  accessorial_rates JSONB,
+  effective_date DATE,
+  expiration_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Audit discrepancy tracking (Step 4 detailed analysis)
+CREATE TABLE audit_discrepancies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  audit_result_id UUID REFERENCES audit_results(id),
+  discrepancy_type VARCHAR(100), -- rate_mismatch, unauthorized_accessorial, etc.
+  description TEXT,
+  invoice_amount INTEGER, -- cents
+  correct_amount INTEGER, -- cents
+  variance INTEGER, -- cents
+  severity VARCHAR(20), -- low, medium, high, critical
+  requires_dispute BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+## Performance & Quality Requirements
+
+### Processing KPIs
+| Metric | Target | Measured By |
+|---------|--------|-------------|
+| Document Processing Time (Step 1) | ≤ 3s median | API response timing |
+| Audit Processing Time (Steps 2-4) | ≤ 1s median | Audit engine timing |
+| OCR Accuracy | ≥ 95% | Field extraction validation |
+| Audit Confidence (Steps 2-4) | ≥ 90% | Discrepancy detection accuracy |
+| False Positive Rate | <5% | Incorrect discrepancy flags |
+| False Negative Rate | <2% | Missed actual discrepancies |
+| API Availability | 99.9% uptime | Health check monitoring |
+
+### Quality Assurance
+- **Real Document Testing:** Process actual freight documents from multiple carriers/formats
+- **Audit Accuracy Validation:** Compare audit results against manual review baseline
+- **Step-by-step validation:** Each audit step (2-4) independently validated
+- **Integration testing:** End-to-end freight auditing workflow validation
+
+## Technical Stack & Architecture
+
+### Core Technologies
+- **FastAPI 0.104+** - REST API framework
+- **Python 3.12** - Runtime environment  
+- **Supabase** - Database and file storage
+- **Poetry** - Dependency management
+- **Docker** - Containerization
+- **Railway** - Deployment platform
+
+### OCR & AI Pipeline
+- **Datalab.to API** - Primary OCR service
+- **Marker API** - Fallback OCR service
+- **GPT-4/Claude** - Enhanced document understanding (optional)
+- **Redis (Upstash)** - Event streaming and caching
+
+### Quality & Testing
+- **pytest + pytest-asyncio** - Testing framework
+- **ruff + black** - Code linting and formatting
+- **GitHub Actions** - CI/CD pipeline
+- **Real document samples** - End-to-end validation
+
+## Integration Points
+
+### Upstream Services (Data Sources for Step 1)
+- **Customer Dashboard** → Document upload requests
+- **ERP Integrations** → Bulk document processing
+- **Email/EDI Processors** → Automated document ingestion
+- **OCR Scanner Apps** → Mobile document capture
+
+### Downstream Services (Data Consumers for Steps 5-7)
+- **Workflow Engine** → Dispute management (Step 5)
+- **Payment Systems** → Validated invoice processing (Step 6)
+- **Analytics Dashboard** → Spend intelligence and reporting (Step 7)
+- **Reporting Service** → Financial insights and audit trails (Step 7)
+- **ERP Systems** → Approved payment data export (Step 6)
+
+## Real Document Testing Strategy
+
+### Test Document Requirements
+- **Freight Invoices:** 20+ samples from major carriers (FedEx, UPS, regional LTL) with known discrepancies
+- **Bills of Lading:** 15+ samples across different freight classes
+- **Rate Confirmations:** 10+ samples from brokers and direct carriers
+- **Lumper Receipts:** 10+ samples including handwritten receipts
+- **Support Documents:** 5+ samples each of CDL, COI, POD, agreements
+
+### Validation Approach
+1. **Blind Processing:** Run documents through pipeline without labels
+2. **Manual Verification:** Expert review of extracted data
+3. **Audit Testing:** Compare audit results against known discrepancies
+4. **Performance Measurement:** Track processing times and confidence scores
+5. **Error Analysis:** Catalog failure modes and improvement opportunities
+6. **Step-by-step validation:** Validate each audit step independently
+
+## Success Criteria
+
+### MVP Acceptance (Phase 1 - Steps 1-4 + 7 Data)
+- [ ] Process all 11 document types with target confidence scores
+- [ ] Audit engine detects rate mismatches and unauthorized accessorials
+- [ ] Analytics APIs return freight spend insights
+- [ ] Real document testing shows 90%+ accuracy on freight invoices
+- [ ] Sub-3-second processing times for standard documents
+- [ ] Railway deployment with health monitoring
+- [ ] Complete freight auditing steps 1-4 automation
+
+### Scale Readiness (Phase 2 - Enterprise Freight Auditing)
+- [ ] Handle 1,000+ documents per day per customer
+- [ ] Advanced audit logic for complex contract terms
+- [ ] ML-enhanced confidence scoring
+- [ ] Comprehensive audit trail and compliance reporting
+- [ ] Integration-ready APIs for steps 5-6 workflow systems
+- [ ] Support for enterprise freight auditing requirements
+
+## Out of Scope (Future Services)
+- **Step 5: Dispute Resolution UI/Workflow** → Dedicated workflow engine service
+- **Step 6: Payment Processing** → Dedicated payment service  
+- **Customer management** → User management service
+- **Advanced reporting UI** → Business intelligence service
+- **Carrier communication tools** → Communication service
+
+This microservice is the **core freight auditing intelligence engine** that automates the most complex and time-consuming parts of the freight auditing process (steps 1-4) while providing rich data APIs for downstream workflow, payment, and reporting services. 

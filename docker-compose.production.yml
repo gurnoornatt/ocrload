@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # OCR Load Service - Production Configuration
+  # =============================================================================
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ocr-load-service:production
+    container_name: ocr-load-production
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    environment:
+      # Production environment variables
+      # These should be set via Railway's environment management
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-50000000}
+      - PORT=${PORT:-8000}
+      
+      # Required secrets (set via Railway environment variables)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - DATALAB_API_KEY=${DATALAB_API_KEY}
+      
+      # Optional services
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - REDIS_URL=${REDIS_URL:-}
+      - REDIS_TOKEN=${REDIS_TOKEN:-}
+    
+    restart: unless-stopped
+    
+    # Production health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    
+    # Security: Read-only root filesystem
+    read_only: true
+    
+    # Security: Temporary filesystem for writable areas
+    tmpfs:
+      - /tmp
+      - /app/tmp
+    
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+    
+    # Security settings
+    security_opt:
+      - no-new-privileges:true
+    
+    # Networking
+    networks:
+      - production-network
+
+# =============================================================================
+# Production Networks
+# =============================================================================
+networks:
+  production-network:
+    driver: bridge
+    name: production-network 

@@ -1,0 +1,119 @@
+# =============================================================================
+# Security: Prevent sensitive files from being copied to Docker image
+# =============================================================================
+
+# Environment files (contain secrets)
+.env
+.env.*
+!.env.example
+
+# Git repository
+.git
+.gitignore
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.nox/
+htmlcov/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Development files
+README.md
+CHANGELOG.md
+LICENSE
+.pre-commit-config.yaml
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Documentation
+docs/
+*.md
+!pyproject.toml
+
+# Task management (contains local paths)
+tasks/
+.taskmasterconfig
+TASK_*.md
+
+# Test files and documents
+tests/
+test_documents/
+*.pdf
+*.jpg
+*.png
+
+# MCP configuration (contains API keys)
+.cursor/
+
+# Node modules (if any)
+node_modules/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup
+
+# Local scripts
+scripts/
+*.sh
+
+# Poetry lock file is included, but not needed in runtime
+# poetry.lock is copied in multistage build
+
+# Local development tools
+.roo/
+.roomodes
+.windsurfrules 

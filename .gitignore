@@ -9,8 +9,10 @@ dev-debug.log
 # Dependency directories
 node_modules/
 
-# Environment variables
+# Environment variables - block all .env files except .env.example
 .env
+.env.*
+!.env.example
 
 # MCP configuration with API keys
 .cursor/mcp.json

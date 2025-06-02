@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # OCR Load Service - Main Application
+  # =============================================================================
+  app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: ocr-load-service:latest
+    container_name: ocr-load-service
+    ports:
+      - "8000:8000"
+    environment:
+      # Load from .env file - create from .env.example
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - DATALAB_API_KEY=${DATALAB_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - REDIS_URL=${REDIS_URL:-}
+      - REDIS_TOKEN=${REDIS_TOKEN:-}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-50000000}
+      - PORT=8000
+    env_file:
+      - .env  # Load environment variables from .env file
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      # Mount logs directory for development (optional)
+      - ./logs:/app/logs:rw
+    networks:
+      - ocr-network
+    
+    # Security: Run as non-root user (already configured in Dockerfile)
+    # Security: No privileged access
+    # Security: Read-only root filesystem (commented out for development)
+    # read_only: true
+    
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # =============================================================================
+  # Development Redis (Optional - for local testing)
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ocr-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - ocr-network
+    # Security: Run as non-root user
+    user: "999:999"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    # Only start if not using external Redis
+    profiles:
+      - dev
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  ocr-network:
+    driver: bridge
+    name: ocr-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  logs:
+    driver: local 
