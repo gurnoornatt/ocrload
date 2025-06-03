@@ -27,6 +27,7 @@ from app.services.document_parsers import (
     PODParser,
     RateConfirmationParser,
 )
+from app.services.document_parsers.lumper_parser import LumperReceiptParser
 from app.services.document_service import document_service
 from app.services.document_storage import document_storage_service
 from app.services.ocr_clients import UnifiedOCRClient
@@ -106,6 +107,8 @@ def get_parser_for_type(doc_type: DocumentType):
         return PODParser()
     elif doc_type == DocumentType.INVOICE:
         return InvoiceParser()
+    elif doc_type == DocumentType.LUMPER:
+        return LumperReceiptParser()
     else:
         return None
 

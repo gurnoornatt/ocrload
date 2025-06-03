@@ -1,221 +1,254 @@
 #!/usr/bin/env python3
 """
-Detailed Invoice Extraction Analysis
-Shows exactly what OCR captures vs what semantic AI extracts
+Detailed BOL Extraction Analysis
+
+Analyzes the actual Claude responses and extracted data quality 
+to understand which workflow performs better:
+
+OLD: Raw OCR Text → Sonnet 3.5
+NEW: Marker API (structured) → Sonnet 3.5
+
+Shows raw responses, extracted fields, and quality metrics.
 """
 
 import asyncio
 import json
-import time
+import logging
+import os
+import sys
 from pathlib import Path
-from app.services.ocr_clients.enhanced_datalab_client import EnhancedDatalabClient
-from app.services.semantic_invoice_extractor import SemanticInvoiceExtractor
 
-async def analyze_invoice_extraction():
-    """Detailed analysis of OCR vs Semantic extraction for each invoice"""
+# Configure logging to show what Claude actually returns
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+# Add the app directory to the Python path
+sys.path.append(str(Path(__file__).parent / "app"))
+
+from app.services.enhanced_bol_extractor import EnhancedBOLExtractor
+from app.services.ocr_clients.datalab_marker_client import DatalabMarkerClient
+
+
+async def analyze_single_document(filepath: Path):
+    """Detailed analysis of a single document with both workflows."""
     
-    print("🔍 DETAILED INVOICE EXTRACTION ANALYSIS")
-    print("=" * 100)
+    print(f"\n" + "="*80)
+    print(f"📄 DETAILED ANALYSIS: {filepath.name}")
+    print("="*80)
     
-    # Find all test documents
-    test_dir = Path("test_documents")
-    invoice_files = (
-        list(test_dir.glob("*.png")) + 
-        list(test_dir.glob("*.pdf")) + 
-        list(test_dir.glob("*.jpg")) + 
-        list(test_dir.glob("*.jpeg")) + 
-        list(test_dir.glob("*.gif")) + 
-        list(test_dir.glob("*.webp"))
-    )
-    invoice_files.sort()
+    # Read document
+    with open(filepath, 'rb') as f:
+        file_content = f.read()
+    print(f"📂 Document: {len(file_content):,} bytes\n")
     
-    if not invoice_files:
-        print("❌ No invoice files found")
-        return
+    # Initialize
+    extractor = EnhancedBOLExtractor()
     
-    # Initialize components
-    ocr_client = EnhancedDatalabClient()
-    semantic_extractor = SemanticInvoiceExtractor()
+    # ================== OLD WORKFLOW ==================
+    print("🔴 OLD WORKFLOW: Raw OCR Text → Sonnet 3.5")
+    print("-" * 50)
     
-    for i, file_path in enumerate(invoice_files, 1):
-        print(f"\n📄 INVOICE {i}: {file_path.name}")
-        print("=" * 100)
+    async with DatalabMarkerClient() as marker:
+        old_result = await marker.process_document(
+            file_content=file_content,
+            filename=filepath.name,
+            mime_type="image/jpeg",
+            language="English",
+            force_ocr=True,
+            use_llm=False,  # RAW OCR only
+            output_format="markdown"
+        )
+    
+    if old_result.success:
+        print(f"📊 Raw OCR: {len(old_result.markdown_content):,} chars")
+        print(f"📋 Preview: {old_result.markdown_content[:150]}...")
         
-        try:
-            # Read file
-            with open(file_path, 'rb') as f:
-                file_content = f.read()
-            
-            filename = file_path.name
-            import mimetypes
-            mime_type, _ = mimetypes.guess_type(str(file_path))
-            if not mime_type:
-                mime_type = "application/octet-stream"
-            
-            # ===== STAGE 1: OCR ANALYSIS =====
-            print("🔤 OCR EXTRACTION ANALYSIS")
-            print("-" * 50)
-            
-            async with ocr_client as client:
-                ocr_results = await client.process_invoice_comprehensive(
-                    file_content, filename, mime_type
-                )
-            
-            if ocr_results.get("success"):
-                # Show OCR methods used
-                methods = ocr_results.get("results", {})
-                print(f"OCR Methods Used: {len(methods)}/3")
-                
-                for method_name, method_result in methods.items():
-                    status = "✅ SUCCESS" if method_result.get("success") else "❌ FAILED"
-                    print(f"  • {method_name}: {status}")
-                    if method_result.get("error"):
-                        print(f"    Error: {method_result['error']}")
-                
-                # Extract and show raw text
-                raw_text = ocr_client.extract_text_from_results(ocr_results)
-                ocr_confidence = ocr_results.get("confidence", 0.0)
-                
-                print(f"\nOCR Confidence: {ocr_confidence:.1%}")
-                print(f"Text Length: {len(raw_text)} characters")
-                print("\n📝 RAW OCR TEXT:")
-                print("-" * 30)
-                print(repr(raw_text))  # Show with escape sequences
-                print("-" * 30)
-                print("FORMATTED TEXT:")
-                print(raw_text)
-                print("-" * 50)
-                
-            else:
-                print(f"❌ OCR Failed: {ocr_results.get('error', 'Unknown error')}")
-                continue
-            
-            # ===== STAGE 2: SEMANTIC AI ANALYSIS =====
-            print("\n🧠 SEMANTIC AI EXTRACTION ANALYSIS")
-            print("-" * 50)
-            
-            # Test OpenAI extraction
-            print("🤖 OpenAI GPT-4o Extraction:")
-            openai_data, openai_confidence = semantic_extractor.extract_fields_openai(raw_text)
-            print(f"  Confidence: {openai_confidence:.1%}")
-            print("  Extracted Fields:")
-            for key, value in openai_data.items():
-                if key == "line_items" and isinstance(value, list):
-                    print(f"    • {key}: {len(value)} items")
-                    for idx, item in enumerate(value, 1):
-                        print(f"      {idx}. {item}")
-                elif key == "validation_flags" and isinstance(value, list):
-                    print(f"    • {key}: {value}")
-                else:
-                    print(f"    • {key}: {value}")
-            
-            print("\n🧠 Anthropic Claude Extraction:")
-            anthropic_data, anthropic_confidence = await semantic_extractor.extract_fields_anthropic(raw_text)
-            print(f"  Confidence: {anthropic_confidence:.1%}")
-            print("  Extracted Fields:")
-            for key, value in anthropic_data.items():
-                if key == "line_items" and isinstance(value, list):
-                    print(f"    • {key}: {len(value)} items")
-                    for idx, item in enumerate(value, 1):
-                        print(f"      {idx}. {item}")
-                elif key == "validation_flags" and isinstance(value, list):
-                    print(f"    • {key}: {value}")
-                else:
-                    print(f"    • {key}: {value}")
-            
-            # ===== STAGE 3: COMPARISON ANALYSIS =====
-            print(f"\n⚖️  EXTRACTION COMPARISON")
-            print("-" * 50)
-            
-            # Compare key fields
-            key_fields = ["invoice_number", "vendor_name", "invoice_date", "due_date", 
-                         "subtotal", "tax_amount", "total_amount", "currency"]
-            
-            print(f"{'Field':<15} {'OpenAI':<20} {'Anthropic':<20} {'Match':<8}")
-            print("-" * 70)
-            
-            for field in key_fields:
-                openai_val = openai_data.get(field, "N/A")
-                anthropic_val = anthropic_data.get(field, "N/A")
-                
-                # Convert to string for comparison
-                openai_str = str(openai_val) if openai_val is not None else "None"
-                anthropic_str = str(anthropic_val) if anthropic_val is not None else "None"
-                
-                match = "✅" if openai_str == anthropic_str else "❌"
-                
-                print(f"{field:<15} {openai_str:<20} {anthropic_str:<20} {match:<8}")
-            
-            # Line items comparison
-            openai_items = openai_data.get("line_items", [])
-            anthropic_items = anthropic_data.get("line_items", [])
-            
-            print(f"\nLine Items:")
-            print(f"  OpenAI: {len(openai_items)} items")
-            print(f"  Anthropic: {len(anthropic_items)} items")
-            
-            if openai_items:
-                print("  OpenAI Line Items:")
-                for idx, item in enumerate(openai_items, 1):
-                    print(f"    {idx}. {item}")
-            
-            if anthropic_items:
-                print("  Anthropic Line Items:")
-                for idx, item in enumerate(anthropic_items, 1):
-                    print(f"    {idx}. {item}")
-            
-            # ===== STAGE 4: FINANCIAL VALIDATION =====
-            print(f"\n💰 FINANCIAL VALIDATION")
-            print("-" * 50)
-            
-            def validate_math(data, model_name):
-                subtotal = data.get("subtotal")
-                tax = data.get("tax_amount")
-                total = data.get("total_amount")
-                
-                if subtotal is not None and tax is not None and total is not None:
-                    expected = subtotal + tax
-                    actual = total
-                    diff = abs(expected - actual)
-                    status = "✅" if diff < 0.01 else "❌"
-                    print(f"  {model_name}: {subtotal} + {tax} = {expected} (actual: {actual}) {status}")
-                    return diff < 0.01
-                else:
-                    print(f"  {model_name}: Missing financial data")
-                    return False
-            
-            openai_math_correct = validate_math(openai_data, "OpenAI")
-            anthropic_math_correct = validate_math(anthropic_data, "Anthropic")
-            
-            # ===== STAGE 5: ACCURACY ASSESSMENT =====
-            print(f"\n📊 ACCURACY ASSESSMENT")
-            print("-" * 50)
-            
-            # Count matching fields
-            matches = sum(1 for field in key_fields 
-                         if str(openai_data.get(field, "")) == str(anthropic_data.get(field, "")))
-            
-            agreement_rate = matches / len(key_fields)
-            
-            print(f"Field Agreement: {matches}/{len(key_fields)} ({agreement_rate:.1%})")
-            print(f"Math Validation: OpenAI: {'✅' if openai_math_correct else '❌'}, "
-                  f"Anthropic: {'✅' if anthropic_math_correct else '❌'}")
-            print(f"Confidence Scores: OpenAI: {openai_confidence:.1%}, Anthropic: {anthropic_confidence:.1%}")
-            
-            # Overall assessment
-            if agreement_rate >= 0.8 and (openai_math_correct or anthropic_math_correct):
-                assessment = "🎉 EXCELLENT"
-            elif agreement_rate >= 0.6:
-                assessment = "✅ GOOD"
-            else:
-                assessment = "⚠️ NEEDS REVIEW"
-            
-            print(f"Overall Assessment: {assessment}")
-            
-        except Exception as e:
-            print(f"❌ ERROR processing {file_path.name}: {e}")
+        # Extract with Sonnet 3.5
+        old_extracted, old_confidence = await extractor.extract_fields_from_markdown(
+            markdown_content=old_result.markdown_content,
+            marker_metadata={"workflow": "old"}
+        )
         
-        print("\n" + "=" * 100)
+        print(f"🎯 OLD Results:")
+        print(f"   Confidence: {old_confidence:.1%}")
+        print(f"   BOL Number: {old_extracted.get('bol_number', 'Missing')}")
+        print(f"   Shipper: {old_extracted.get('shipper_name', 'Missing')}")
+        print(f"   Consignee: {old_extracted.get('consignee_name', 'Missing')}")
+        print(f"   Carrier: {old_extracted.get('carrier_name', 'Missing')}")
+        print(f"   Weight: {old_extracted.get('weight', 'Missing')}")
+        
+        # Count extracted fields
+        old_filled = sum(1 for v in old_extracted.values() if v and v != "Missing")
+        print(f"   Fields extracted: {old_filled}/18")
+    else:
+        print("❌ OLD workflow failed")
+        old_extracted, old_confidence = {}, 0.0
+        old_filled = 0
+    
+    print()
+    
+    # ================== NEW WORKFLOW ==================
+    print("🟢 NEW WORKFLOW: Marker API (structured) → Sonnet 3.5")
+    print("-" * 50)
+    
+    async with DatalabMarkerClient() as marker:
+        new_result = await marker.process_document(
+            file_content=file_content,
+            filename=filepath.name,
+            mime_type="image/jpeg",
+            language="English",
+            force_ocr=True,
+            use_llm=True,  # ENHANCED with LLM structure
+            output_format="markdown"
+        )
+    
+    if new_result.success:
+        print(f"📊 Enhanced markdown: {len(new_result.markdown_content):,} chars")
+        print(f"📋 Tables detected: {len(new_result.get_tables())}")
+        print(f"📋 Preview: {new_result.markdown_content[:150]}...")
+        
+        # Extract with Sonnet 3.5
+        new_extracted, new_confidence = await extractor.extract_fields_from_markdown(
+            markdown_content=new_result.markdown_content,
+            marker_metadata={"workflow": "new"}
+        )
+        
+        print(f"🎯 NEW Results:")
+        print(f"   Confidence: {new_confidence:.1%}")
+        print(f"   BOL Number: {new_extracted.get('bol_number', 'Missing')}")
+        print(f"   Shipper: {new_extracted.get('shipper_name', 'Missing')}")
+        print(f"   Consignee: {new_extracted.get('consignee_name', 'Missing')}")
+        print(f"   Carrier: {new_extracted.get('carrier_name', 'Missing')}")
+        print(f"   Weight: {new_extracted.get('weight', 'Missing')}")
+        
+        # Count extracted fields
+        new_filled = sum(1 for v in new_extracted.values() if v and v != "Missing")
+        print(f"   Fields extracted: {new_filled}/18")
+    else:
+        print("❌ NEW workflow failed")
+        new_extracted, new_confidence = {}, 0.0
+        new_filled = 0
+    
+    print()
+    
+    # ================== COMPARISON ==================
+    print("⚖️  DETAILED COMPARISON")
+    print("-" * 50)
+    
+    print(f"📈 Confidence Scores:")
+    print(f"   OLD: {old_confidence:.1%}")
+    print(f"   NEW: {new_confidence:.1%}")
+    conf_winner = "NEW" if new_confidence > old_confidence else "OLD" if old_confidence > new_confidence else "TIE"
+    print(f"   Winner: {conf_winner}")
+    
+    print(f"\n📊 Data Completeness:")
+    print(f"   OLD: {old_filled}/18 fields")
+    print(f"   NEW: {new_filled}/18 fields")
+    data_winner = "NEW" if new_filled > old_filled else "OLD" if old_filled > new_filled else "TIE"
+    print(f"   Winner: {data_winner}")
+    
+    # Field-by-field comparison
+    print(f"\n🔍 Field-by-Field Analysis:")
+    key_fields = ['bol_number', 'shipper_name', 'consignee_name', 'carrier_name', 'weight', 'pieces']
+    for field in key_fields:
+        old_val = str(old_extracted.get(field, "Missing"))[:30]
+        new_val = str(new_extracted.get(field, "Missing"))[:30]
+        
+        if old_val != "Missing" and new_val != "Missing":
+            status = "✅ Both"
+        elif new_val != "Missing":
+            status = "🟢 NEW only"
+        elif old_val != "Missing":
+            status = "🔴 OLD only"
+        else:
+            status = "❌ Neither"
+            
+        print(f"   {field:>16}: {status}")
+    
+    # Overall assessment
+    print(f"\n🏆 OVERALL ASSESSMENT:")
+    if new_confidence > old_confidence and new_filled >= old_filled:
+        verdict = "🟢 NEW WORKFLOW SUPERIOR"
+    elif old_confidence > new_confidence and old_filled >= new_filled:
+        verdict = "🔴 OLD WORKFLOW SUPERIOR"
+    elif new_filled > old_filled:
+        verdict = "🟢 NEW WORKFLOW SUPERIOR (More Data)"
+    elif old_filled > new_filled:
+        verdict = "🔴 OLD WORKFLOW SUPERIOR (More Data)"
+    else:
+        verdict = "🟡 WORKFLOWS EQUIVALENT"
+    
+    print(f"   {verdict}")
+    
+    return {
+        'filename': filepath.name,
+        'old_confidence': old_confidence,
+        'new_confidence': new_confidence,
+        'old_fields': old_filled,
+        'new_fields': new_filled,
+        'verdict': verdict
+    }
+
+
+async def main():
+    """Run detailed analysis on key BOL documents."""
+    
+    print("🔍 DETAILED BOL EXTRACTION ANALYSIS")
+    print("="*80)
+    print("Analyzing actual Claude responses and data quality")
+    print("OLD: Raw OCR → Sonnet 3.5")
+    print("NEW: Marker API → Sonnet 3.5")
+    
+    # Analyze key documents
+    bol_dir = Path("test_documents/bol")
+    test_files = [
+        "BOL2.jpg",  # Known good document
+        "BOL9.jpg",  # Another good document  
+        "BOL4.jpg"   # International document
+    ]
+    
+    results = []
+    for filename in test_files:
+        filepath = bol_dir / filename
+        if filepath.exists():
+            result = await analyze_single_document(filepath)
+            results.append(result)
+        else:
+            print(f"⚠️  File not found: {filename}")
+    
+    # Summary
+    if results:
+        print(f"\n" + "="*80)
+        print("📊 SUMMARY ANALYSIS")
+        print("="*80)
+        
+        new_wins = sum(1 for r in results if "NEW" in r['verdict'])
+        old_wins = sum(1 for r in results if "OLD" in r['verdict'])
+        ties = sum(1 for r in results if "EQUIVALENT" in r['verdict'])
+        
+        avg_old_conf = sum(r['old_confidence'] for r in results) / len(results)
+        avg_new_conf = sum(r['new_confidence'] for r in results) / len(results)
+        avg_old_fields = sum(r['old_fields'] for r in results) / len(results)
+        avg_new_fields = sum(r['new_fields'] for r in results) / len(results)
+        
+        print(f"🏆 VERDICT BREAKDOWN:")
+        print(f"   🟢 NEW workflow wins: {new_wins}")
+        print(f"   🔴 OLD workflow wins: {old_wins}")
+        print(f"   🟡 Equivalent: {ties}")
+        
+        print(f"\n📊 AVERAGE PERFORMANCE:")
+        print(f"   Confidence - OLD: {avg_old_conf:.1%}, NEW: {avg_new_conf:.1%}")
+        print(f"   Data Fields - OLD: {avg_old_fields:.1f}, NEW: {avg_new_fields:.1f}")
+        
+        if new_wins > old_wins:
+            print(f"\n🎉 CONCLUSION: NEW WORKFLOW IS BETTER")
+            print(f"   The enhanced Marker API approach delivers superior results")
+        elif old_wins > new_wins:
+            print(f"\n🤔 CONCLUSION: OLD WORKFLOW IS BETTER") 
+            print(f"   Raw OCR approach is currently more effective")
+        else:
+            print(f"\n🤝 CONCLUSION: WORKFLOWS ARE EQUIVALENT")
+            print(f"   Both approaches deliver similar results")
+
 
 if __name__ == "__main__":
-    asyncio.run(analyze_invoice_extraction()) 
+    asyncio.run(main()) 

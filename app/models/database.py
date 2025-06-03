@@ -23,6 +23,7 @@ class DocumentType(str, Enum):
     RATE_CON = "RATE_CON"
     POD = "POD"
     INVOICE = "INVOICE"
+    LUMPER = "LUMPER"
 
 
 class DocumentStatus(str, Enum):

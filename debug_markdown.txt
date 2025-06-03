@@ -1,0 +1,17 @@
+|                                                                                                                   | LOAD AND TIME TICKET |         | 0001                     |       |  |
+|-------------------------------------------------------------------------------------------------------------------|----------------------|---------|--------------------------|-------|--|
+| NAME OF CARRIER<br>123 Business Address<br>8301 Address Linc<br>Detroit, MI 48204<br>DATE 5/423<br>(000) 000-0000 |                      |         |                          |       |  |
+| DARE<br>SHIPPER                                                                                                   |                      |         | SCP                      |       |  |
+| 4 + las<br>CUSTOMER                                                                                               |                      |         |                          |       |  |
+| FROM                                                                                                              |                      |         |                          |       |  |
+| TO                                                                                                                |                      | TO Pf 3 |                          |       |  |
+| TRAIL. NO,<br>WEIGHED<br>170<br>NUMBER<br>X                                                                       |                      |         |                          |       |  |
+| START                                                                                                             | CAR#                 | REC.    | LOAD<br>PER              | LOAD  |  |
+| QUITT<br>TONS                                                                                                     | 7:00                 | 65420   | REGULAR RATE<br>PER HOUR | 3:15  |  |
+| DESCRIPTION OF COMMODITY                                                                                          |                      |         |                          |       |  |
+| Sand<br>GROSS                                                                                                     |                      |         |                          |       |  |
+| 24.17<br>NET                                                                                                      |                      |         |                          | 24.17 |  |
+| TARE                                                                                                              |                      |         | 24.17                    |       |  |
+| RECEIVED BY                                                                                                       |                      |         |                          |       |  |
+
+## NOT RESPONSIBLE FOR DAMAGE TO CURBS, SIDEWALKS OR DRIVEWAYS. CUSTOMER AGREES TO PAY SERVICE CHARGE OF 11% PER MONTH IF PAYMENT IS NOT MADE UPON DUE DATE. WHITE-OFFICE COPY, CANARY-SHIPPER'S COPY PINK-AUDIT COPY, GOLD-DRIVER'S COPY

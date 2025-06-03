@@ -231,6 +231,31 @@ class SupabaseService:
             logger.error(f"Unexpected error creating invoice: {e}")
             return None
 
+    async def create_bol(self, bol_data: dict[str, Any]) -> dict[str, Any] | None:
+        """
+        Create a new Bill of Lading record from parsed BOL data.
+
+        Args:
+            bol_data: Dictionary with BOL data
+
+        Returns:
+            Created BOL record as dict or None if failed
+        """
+        try:
+            logger.info(f"Creating BOL record for document: {bol_data.get('document_id')}")
+            result = self.client.table("bills_of_lading").insert(bol_data).execute()
+            if result.data:
+                logger.info(f"Successfully created BOL record")
+                return result.data[0]
+            return None
+        except APIError as e:
+            logger.error(f"Failed to create BOL: {e}")
+            # Don't raise here - let the caller handle the failure gracefully
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error creating BOL: {e}")
+            return None
+
     async def update_document(
         self, document_id: str | UUID, update_data: dict[str, Any]
     ) -> dict[str, Any]:

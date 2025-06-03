@@ -177,6 +177,89 @@ class DocumentService:
                 logger.error(f"Error saving invoice data for document {document_id}: {e}")
                 raise
 
+    async def save_bol_data(
+        self,
+        document_id: UUID,
+        bol_data: Any,
+        request_id: str | None = None,
+    ) -> bool:
+        """
+        Save extracted BOL data to the database.
+
+        Args:
+            document_id: Document UUID
+            bol_data: Extracted BOL data (ExtractedBOLData model or dict)
+            request_id: Request ID for tracking (optional)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        # Use document_id as request_id if not provided
+        tracking_id = request_id or str(document_id)
+
+        async with performance_monitor.track_stage(
+            PipelineStage.DATABASE_UPDATE,
+            tracking_id,
+            operation="save_bol_data",
+        ):
+            try:
+                logger.info(f"Saving BOL data for document: {document_id}")
+
+                # Convert BOL data to dict for database storage
+                if hasattr(bol_data, 'model_dump'):
+                    bol_dict = bol_data.model_dump(exclude_unset=True)
+                elif hasattr(bol_data, 'dict'):
+                    bol_dict = bol_data.dict(exclude_unset=True)
+                else:
+                    bol_dict = bol_data
+                
+                # Ensure document_id is set and converted to string
+                bol_dict["document_id"] = str(document_id)
+                
+                # Convert UUIDs to strings if present
+                if "id" in bol_dict and bol_dict["id"]:
+                    bol_dict["id"] = str(bol_dict["id"])
+                
+                # Convert dates to ISO format if present
+                for date_field in ["pickup_date", "delivery_date"]:
+                    if date_field in bol_dict and bol_dict[date_field]:
+                        if hasattr(bol_dict[date_field], 'isoformat'):
+                            bol_dict[date_field] = bol_dict[date_field].isoformat()
+                
+                # Convert float amounts to proper format for storage
+                for amount_field in ["weight", "freight_charges"]:
+                    if amount_field in bol_dict and bol_dict[amount_field]:
+                        bol_dict[amount_field] = float(bol_dict[amount_field])
+
+                # Convert pieces to int if present
+                if "pieces" in bol_dict and bol_dict["pieces"]:
+                    try:
+                        bol_dict["pieces"] = int(bol_dict["pieces"])
+                    except (ValueError, TypeError):
+                        bol_dict["pieces"] = None
+
+                # Remove fields that shouldn't be stored in the database table
+                excluded_fields = ["confidence_score", "validation_flags"]
+                for field in excluded_fields:
+                    bol_dict.pop(field, None)
+
+                # Remove None values
+                bol_dict = {k: v for k, v in bol_dict.items() if v is not None}
+
+                # Insert into bills_of_lading table
+                result = await self.supabase.create_bol(bol_dict)
+
+                if result:
+                    logger.info(f"Successfully saved BOL data for document: {document_id}")
+                    return True
+                else:
+                    logger.warning(f"Failed to save BOL data for document: {document_id}")
+                    return False
+
+            except Exception as e:
+                logger.error(f"Failed to save BOL data: {e}")
+                return False
+
     async def update_document_status(
         self,
         document_id: UUID,

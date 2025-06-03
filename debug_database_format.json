@@ -1,0 +1,33 @@
+{
+  "document_id": "test-doc-id",
+  "charge_number": "0001",
+  "charge_date": "2023-05-04",
+  "carrier_name": "NAME OF CARRIER",
+  "bol_number": null,
+  "pro_number": null,
+  "charge_type": "Load and Time Service",
+  "charge_description": "Sand hauling/loading operation | Notes: NOT RESPONSIBLE FOR DAMAGE TO CURBS, SIDEWALKS OR DRIVEWAYS. CUSTOMER AGREES TO PAY SERVICE CHARGE OF 11% PER MONTH IF PAYMENT IS NOT MADE UPON DUE DATE.",
+  "quantity": 8.25,
+  "unit_price": null,
+  "total_amount": null,
+  "justification": null,
+  "supporting_docs": {
+    "extraction_method": "marker_sonnet",
+    "start_time": "7:00",
+    "end_time": "3:15",
+    "truck_number": "65420",
+    "trailer_number": "170",
+    "customer_name": "SCP",
+    "special_services": [
+      "Weight measurement service"
+    ],
+    "confidence_score": 0.85,
+    "validation_flags": [
+      "Service location missing"
+    ],
+    "rate_per_hour": "REGULAR RATE"
+  },
+  "approval_status": "pending",
+  "approved_by": null,
+  "approved_at": null
+}

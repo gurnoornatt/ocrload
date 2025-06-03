@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "generatedAt": "2025-06-03T07:40:08.666Z",
+    "tasksAnalyzed": 1,
+    "totalTasks": 44,
+    "analysisCount": 1,
+    "thresholdScore": 5,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 31,
+      "taskTitle": "Delivery Note & Packing List Parsers Implementation",
+      "complexityScore": 8,
+      "recommendedSubtasks": 7,
+      "expansionPrompt": "Break down the Delivery Note & Packing List Parsers Implementation task into subtasks covering: 1) OCR integration for document scanning, 2) Delivery note field extraction logic, 3) Packing list field extraction logic, 4) Confidence scoring system, 5) Error handling and human review flagging, 6) Database integration, and 7) Testing framework setup.",
+      "reasoning": "This task involves complex document parsing with multiple challenges: OCR processing, handling varied formats including handwritten notes, implementing ML-based confidence scoring, creating fallback logic, and integrating with existing systems. The 80%+ confidence requirement adds significant complexity, as does the need to handle multiple document layouts. The task requires both technical implementation and sophisticated testing across diverse document samples."
+    }
+  ]
+}

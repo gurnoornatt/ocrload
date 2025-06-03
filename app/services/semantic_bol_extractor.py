@@ -34,10 +34,9 @@ class ExtractedBOLData(BaseModel):
     # Core BOL identifiers
     bol_number: Optional[str] = Field(None, description="Bill of Lading number")
     pro_number: Optional[str] = Field(None, description="Progressive number from carrier")
-    tracking_number: Optional[str] = Field(None, description="Tracking number for shipment")
     
-    # Dates
-    ship_date: Optional[str] = Field(None, description="Date shipped in YYYY-MM-DD format")
+    # Dates - renamed to match database schema
+    pickup_date: Optional[str] = Field(None, description="Date picked up in YYYY-MM-DD format")
     delivery_date: Optional[str] = Field(None, description="Date delivered in YYYY-MM-DD format")
     
     # Shipper information
@@ -50,15 +49,19 @@ class ExtractedBOLData(BaseModel):
     
     # Carrier information
     carrier_name: Optional[str] = Field(None, description="Carrier/transportation company name")
-    carrier_scac: Optional[str] = Field(None, description="Standard Carrier Alpha Code")
+    driver_name: Optional[str] = Field(None, description="Driver name")
     
-    # Freight details
-    freight_description: Optional[str] = Field(None, description="Description of freight/goods")
+    # Equipment information
+    equipment_type: Optional[str] = Field(None, description="Type of equipment used")
+    equipment_number: Optional[str] = Field(None, description="Equipment/trailer number")
+    
+    # Freight details - renamed to match database schema
+    commodity_description: Optional[str] = Field(None, description="Description of freight/goods")
     weight: Optional[float] = Field(None, description="Total weight")
-    weight_unit: Optional[str] = Field(None, description="Weight unit (lbs, kg, etc.)")
     pieces: Optional[int] = Field(None, description="Number of pieces/packages")
+    hazmat: Optional[bool] = Field(False, description="Hazardous materials flag")
     
-    # Special instructions and notes
+    # Special instructions and charges
     special_instructions: Optional[str] = Field(None, description="Special handling instructions")
     freight_charges: Optional[float] = Field(None, description="Freight charges amount")
     
@@ -119,19 +122,20 @@ class SemanticBOLExtractor:
                 "properties": {
                     "bol_number": {"type": ["string", "null"]},
                     "pro_number": {"type": ["string", "null"]},
-                    "tracking_number": {"type": ["string", "null"]},
-                    "ship_date": {"type": ["string", "null"]},
+                    "pickup_date": {"type": ["string", "null"]},
                     "delivery_date": {"type": ["string", "null"]},
                     "shipper_name": {"type": ["string", "null"]},
                     "shipper_address": {"type": ["string", "null"]},
                     "consignee_name": {"type": ["string", "null"]},
                     "consignee_address": {"type": ["string", "null"]},
                     "carrier_name": {"type": ["string", "null"]},
-                    "carrier_scac": {"type": ["string", "null"]},
-                    "freight_description": {"type": ["string", "null"]},
+                    "driver_name": {"type": ["string", "null"]},
+                    "equipment_type": {"type": ["string", "null"]},
+                    "equipment_number": {"type": ["string", "null"]},
+                    "commodity_description": {"type": ["string", "null"]},
                     "weight": {"type": ["number", "null"]},
-                    "weight_unit": {"type": ["string", "null"]},
                     "pieces": {"type": ["integer", "null"]},
+                    "hazmat": {"type": ["boolean", "null"]},
                     "special_instructions": {"type": ["string", "null"]},
                     "freight_charges": {"type": ["number", "null"]},
                     "confidence_score": {"type": "number"},
@@ -140,10 +144,11 @@ class SemanticBOLExtractor:
                         "items": {"type": "string"}
                     }
                 },
-                "required": ["bol_number", "pro_number", "tracking_number", "ship_date", "delivery_date",
+                "required": ["bol_number", "pro_number", "pickup_date", "delivery_date",
                            "shipper_name", "shipper_address", "consignee_name", "consignee_address",
-                           "carrier_name", "carrier_scac", "freight_description", "weight", "weight_unit",
-                           "pieces", "special_instructions", "freight_charges", "confidence_score", "validation_flags"],
+                           "carrier_name", "driver_name", "equipment_type", "equipment_number",
+                           "commodity_description", "weight", "pieces", "hazmat", 
+                           "special_instructions", "freight_charges", "confidence_score", "validation_flags"],
                 "additionalProperties": False
             }
             
@@ -156,10 +161,11 @@ class SemanticBOLExtractor:
                         "content": """You are an expert Bill of Lading (BOL) data extraction specialist. 
                         
 Extract BOL data with 99-100% accuracy. Pay special attention to:
-- BOL numbers, Pro numbers, and tracking numbers
+- BOL numbers, Pro numbers
 - Shipper and consignee information (names and addresses)
-- Carrier details including SCAC codes
-- Freight descriptions, weights, and piece counts
+- Carrier details and driver names
+- Equipment information (type and numbers)
+- Commodity descriptions, weights, and piece counts
 - Special instructions and freight charges
 - Dates in proper format (YYYY-MM-DD)
 
@@ -169,10 +175,13 @@ Common BOL field names to look for:
 - "Ship From", "Shipper", "Origin" for shipper info
 - "Ship To", "Consignee", "Destination" for consignee info
 - "Carrier", "Transportation Company" for carrier info
-- "SCAC", "Standard Carrier Alpha Code" for carrier codes
-- "Description", "Commodity", "Freight" for freight description
+- "Driver", "Driver Name" for driver information
+- "Equipment", "Trailer", "Container" for equipment info
+- "Description", "Commodity", "Freight" for commodity description
 - "Weight", "Gross Weight", "Net Weight" for weight information
 - "Pieces", "Units", "Packages" for piece counts
+- "Pickup", "Ship Date" for pickup dates
+- "Delivery", "Delivery Date" for delivery dates
 
 Return structured data with high confidence scoring."""
                     },
@@ -228,10 +237,11 @@ Return structured data with high confidence scoring."""
             prompt = f"""Extract all Bill of Lading (BOL) data from the following text and return it as a JSON object.
 
 Pay special attention to:
-- BOL numbers, Pro numbers, and tracking numbers
+- BOL numbers, Pro numbers
 - Shipper and consignee information (names and complete addresses)
-- Carrier details including SCAC codes  
-- Freight descriptions, weights (with units), and piece counts
+- Carrier details and driver names  
+- Equipment information (type and numbers)
+- Commodity descriptions, weights, and piece counts
 - Special instructions and freight charges
 - Dates in YYYY-MM-DD format
 
@@ -241,28 +251,32 @@ Common field names to look for:
 - "Ship From", "Shipper", "Origin" for shipper info
 - "Ship To", "Consignee", "Destination" for consignee info
 - "Carrier", "Transportation Company" for carrier info
-- "SCAC", "Standard Carrier Alpha Code" for carrier codes
-- "Description", "Commodity", "Freight" for freight description
+- "Driver", "Driver Name" for driver information
+- "Equipment", "Trailer", "Container" for equipment info
+- "Description", "Commodity", "Freight" for commodity description
 - "Weight", "Gross Weight", "Net Weight" for weight information
 - "Pieces", "Units", "Packages" for piece counts
+- "Pickup", "Ship Date" for pickup dates
+- "Delivery", "Delivery Date" for delivery dates
 
 Return JSON with these exact fields:
 {{
     "bol_number": "string or null",
     "pro_number": "string or null", 
-    "tracking_number": "string or null",
-    "ship_date": "YYYY-MM-DD or null",
+    "pickup_date": "YYYY-MM-DD or null",
     "delivery_date": "YYYY-MM-DD or null",
     "shipper_name": "string or null",
     "shipper_address": "string or null",
     "consignee_name": "string or null", 
     "consignee_address": "string or null",
     "carrier_name": "string or null",
-    "carrier_scac": "string or null",
-    "freight_description": "string or null",
+    "driver_name": "string or null",
+    "equipment_type": "string or null",
+    "equipment_number": "string or null",
+    "commodity_description": "string or null",
     "weight": "number or null",
-    "weight_unit": "string or null",
     "pieces": "integer or null",
+    "hazmat": "boolean or null",
     "special_instructions": "string or null",
     "freight_charges": "number or null",
     "confidence_score": "number between 0.0 and 1.0",
@@ -356,7 +370,7 @@ Document text:
             confidence -= 0.1
         
         # Validate date formats
-        date_fields = ["ship_date", "delivery_date"]
+        date_fields = ["pickup_date", "delivery_date"]
         for field_name in date_fields:
             date_value = getattr(data, field_name)
             if date_value:

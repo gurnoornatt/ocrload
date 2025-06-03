@@ -1,0 +1,36 @@
+{
+  "document_number": "0001",
+  "document_date": "2023-05-04",
+  "service_type": "Load and Time Service",
+  "service_description": "Sand hauling/loading operation",
+  "location": null,
+  "start_time": "7:00",
+  "end_time": "3:15",
+  "duration_hours": 8.25,
+  "truck_number": "65420",
+  "trailer_number": "170",
+  "driver_name": null,
+  "carrier_name": "NAME OF CARRIER",
+  "load_number": null,
+  "bol_number": null,
+  "rate_per_hour": "REGULAR RATE",
+  "rate_flat": null,
+  "total_charges": null,
+  "currency": "USD",
+  "approved_by": null,
+  "approval_signature": null,
+  "authorization_code": null,
+  "charge_justification": null,
+  "customer_name": "SCP",
+  "notes": "NOT RESPONSIBLE FOR DAMAGE TO CURBS, SIDEWALKS OR DRIVEWAYS. CUSTOMER AGREES TO PAY SERVICE CHARGE OF 11% PER MONTH IF PAYMENT IS NOT MADE UPON DUE DATE.",
+  "special_services": [
+    "Weight measurement service"
+  ],
+  "confidence_score": 0.85,
+  "validation_flags": [
+    "Partial address information",
+    "Missing approval information",
+    "Missing rate details",
+    "Missing location details"
+  ]
+}
